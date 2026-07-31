@@ -1,0 +1,82 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+psycopg://codeteam:codeteam@database:5432/codeteam
+      REPOSITORY_ROOT: /data/repositories
+      LLM_PROVIDER: ${LLM_PROVIDER:-fake}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-hash}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+      EMBEDDING_DIMENSIONS: 1536
+      TASK_DISPATCH_MODE: celery
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      SANDBOX_ROOT: /data/sandboxes
+    volumes:
+      - repository_data:/data/repositories
+      - sandbox_data:/data/sandboxes
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build: .
+    command: celery -A codeteam.worker:celery_app worker --loglevel=INFO
+    environment:
+      DATABASE_URL: postgresql+psycopg://codeteam:codeteam@database:5432/codeteam
+      REPOSITORY_ROOT: /data/repositories
+      LLM_PROVIDER: ${LLM_PROVIDER:-fake}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-hash}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+      EMBEDDING_DIMENSIONS: 1536
+      TASK_DISPATCH_MODE: celery
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      SANDBOX_ROOT: /data/sandboxes
+    volumes:
+      - repository_data:/data/repositories
+      - sandbox_data:/data/sandboxes
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  database:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_DB: codeteam
+      POSTGRES_USER: codeteam
+      POSTGRES_PASSWORD: codeteam
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U codeteam"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - redis_data:/data
+
+volumes:
+  postgres_data:
+  repository_data:
+  sandbox_data:
+  redis_data:
